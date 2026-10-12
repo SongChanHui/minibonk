@@ -240,7 +240,7 @@ class PauseOverlay extends StatelessWidget {
                       onPressed: () => game.resumeGame(),
                       icon: const Icon(Icons.play_arrow, size: 20),
                       label: const Text(
-                        'RESUME // 계속하기 (ESC)',
+                        'RESUME // 계속하기! (ESC)',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w900,

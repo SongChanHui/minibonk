@@ -38,6 +38,21 @@ class _HudOverlayState extends State<HudOverlay> {
             // Teleporter Radar Pointer (if discovered)
             if (widget.game.isTeleporterDiscovered) _buildRadarArrow(),
 
+            if (widget.game.nearbyChest != null)
+              Positioned(
+                bottom: 150,
+                left: 0,
+                right: 0,
+                child: Center(child: _buildChestPrompt()),
+              ),
+
+            if (widget.game.eventLogs.isNotEmpty)
+              Positioned(
+                top: 78,
+                right: 12,
+                child: _buildEventLog(),
+              ),
+
             // Bottom-Right: Equipped Items & Dash Button
             Positioned(
               bottom: 16,
@@ -54,6 +69,59 @@ class _HudOverlayState extends State<HudOverlay> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildChestPrompt() {
+    final game = widget.game;
+    final chest = game.nearbyChest!;
+    final isGolden = chest.type.name == 'chestGolden';
+    final cost = isGolden ? 0 : game.nearbyChestCost;
+    final canAfford = isGolden || game.gold >= cost;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF090D17).withValues(alpha: 0.94),
+        border: Border.all(
+          color: canAfford ? const Color(0xFFFFD54F) : Colors.redAccent,
+          width: 1.5,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        canAfford
+            ? '상자 열기  [E]${isGolden ? '  무료' : '  $cost G'}'
+            : '골드 부족  [$cost G 필요]',
+        style: TextStyle(
+          color: canAfford ? const Color(0xFFFFE082) : Colors.redAccent,
+          fontSize: 16,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEventLog() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 300),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF080B13).withValues(alpha: 0.82),
+        border: Border.all(color: const Color(0xFF263238)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('진행 로그', style: TextStyle(color: Color(0xFF80DEEA), fontWeight: FontWeight.bold, fontSize: 11)),
+          const SizedBox(height: 4),
+          ...widget.game.eventLogs.take(4).map((entry) => Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(entry, style: const TextStyle(color: Colors.white, fontSize: 10), maxLines: 2, overflow: TextOverflow.ellipsis),
+              )),
+        ],
+      ),
     );
   }
 

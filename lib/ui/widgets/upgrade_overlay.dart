@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../game/minibonk_game.dart';
 import '../../game/managers/inventory_manager.dart';
+import '../../models/stats.dart';
 
 class UpgradeOverlay extends StatefulWidget {
   final MinibonkGame game;
@@ -77,7 +78,9 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {
                                   ),
                                 ),
                                 child: Icon(
-                                  game.isZoneUpgradeModal
+                                  game.isChestRewardModal
+                                      ? Icons.inventory_2
+                                      : game.isZoneUpgradeModal
                                       ? Icons.bolt
                                       : Icons.keyboard_double_arrow_up,
                                   color: const Color(0xFF00E5FF),
@@ -86,9 +89,11 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {
                               ),
                               const SizedBox(width: 10),
                               Text(
-                                game.isZoneUpgradeModal
-                                    ? 'ENHANCEMENT ZONE // 강화 선택'
-                                    : 'LEVEL UPGRADE // 능력 선택',
+                                game.isChestRewardModal
+                                    ? 'CHEST REWARD // 아이템 선택'
+                                    : game.isZoneUpgradeModal
+                                        ? 'ENHANCEMENT ZONE // 강화 선택'
+                                        : 'LEVEL UPGRADE // 능력 선택',
                                 style: const TextStyle(
                                   color: Color(0xFFE0F7FA),
                                   fontSize: 16,
@@ -145,7 +150,7 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          _buildActionButton(
+                  if (!game.isChestRewardModal) _buildActionButton(
                             label: '재설정 (${game.rerollCount})',
                             icon: Icons.refresh,
                             color: const Color(0xFF00E5FF),
@@ -157,8 +162,8 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {
                                   }
                                 : null,
                           ),
-                          const SizedBox(width: 10),
-                          _buildActionButton(
+                  if (!game.isChestRewardModal) const SizedBox(width: 10),
+                  if (!game.isChestRewardModal) _buildActionButton(
                             label: '스킵 (${game.skipCount})',
                             icon: Icons.close,
                             color: const Color(0xFFFF5252),
@@ -267,7 +272,9 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'LV.${game.playerLevel} → LV.${game.playerLevel + 1}',
+                    game.isChestRewardModal
+                        ? '상자 보상 선택 · +50 G'
+                        : 'LV.${game.playerLevel} → LV.${game.playerLevel + 1}',
                     style: const TextStyle(
                       color: Color(0xFFFFD54F),
                       fontWeight: FontWeight.w900,
@@ -291,55 +298,55 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {
                   icon: Icons.bolt,
                   name: '공격력 (ATK)',
                   value: (stats.damageMultiplier * 50).round().toString(),
-                  bonus: '+10',
+                  bonus: _rawBonus(stats, StatType.damage),
                 ),
                 _buildStatItem(
                   icon: Icons.favorite,
                   name: '최대 체력 (HP)',
                   value: stats.maxHp.round().toString(),
-                  bonus: '+10',
+                  bonus: _rawBonus(stats, StatType.maxHp),
                 ),
                 _buildStatItem(
                   icon: Icons.gps_fixed,
                   name: '치명타 확률 (CRIT)',
                   value: '${stats.totalCritChance.round()}%',
-                  bonus: '+10',
+                  bonus: _rawBonus(stats, StatType.critChance),
                 ),
                 _buildStatItem(
                   icon: Icons.whatshot,
                   name: '치명타 피해 (C.DMG)',
                   value: '${(stats.baseCritDamage * 100).round()}%',
-                  bonus: '+10',
+                  bonus: _rawBonus(stats, StatType.critDamage),
                 ),
                 _buildStatItem(
                   icon: Icons.directions_run,
                   name: '이동속도 (SPD)',
                   value: (stats.moveSpeedMultiplier * 100).round().toString(),
-                  bonus: '+10',
+                  bonus: _rawBonus(stats, StatType.moveSpeed),
                 ),
                 _buildStatItem(
                   icon: Icons.speed,
                   name: '공격속도 (ATK SPD)',
                   value: (stats.attackSpeedMultiplier * 100).round().toString(),
-                  bonus: '+10',
+                  bonus: _rawBonus(stats, StatType.attackSpeed),
                 ),
                 _buildStatItem(
                   icon: Icons.shield,
                   name: '방어력 (ARMOR)',
                   value: stats.armorPercent.round().toString(),
-                  bonus: '+6',
+                  bonus: '원시 ${_rawBonus(stats, StatType.armor)}',
                 ),
                 _buildStatItem(
                   icon: Icons.radio_button_checked,
                   name: '획득범위 (RANGE)',
-                  value: (stats.pickupRange / 10).round().toString(),
-                  bonus: '+10',
+                  value: stats.pickupRange.round().toString(),
+                  bonus: _rawBonus(stats, StatType.pickupRange),
                 ),
                 _buildStatItem(
                   icon: Icons.aspect_ratio,
                   name: '공격범위 (AREA)',
                   value: (stats.sizeMultiplier * 100).round().toString(),
-                  bonus: '+6',
+                  bonus: _rawBonus(stats, StatType.size),
                 ),
               ],
             ),
@@ -385,7 +392,7 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {
             '($bonus)',
             style: const TextStyle(
               color: Color(0xFF00E676),
-              fontSize: 10,
+              fontSize: 8,
               fontWeight: FontWeight.w900,
               fontFamily: 'monospace',
             ),
@@ -393,6 +400,11 @@ class _UpgradeOverlayState extends State<UpgradeOverlay> {
         ],
       ),
     );
+  }
+
+  String _rawBonus(PlayerStats stats, StatType type) {
+    final value = stats.getRawStatSum(type);
+    return '변동 ${value >= 0 ? '+' : ''}${value.toStringAsFixed(1)}';
   }
 
   // Horizontal Card Row - Sharp Bevel Look with Neon Glow

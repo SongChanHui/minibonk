@@ -3,11 +3,13 @@ import '../../models/stats.dart';
 import '../../models/rarity.dart';
 import '../../models/weapon_definition.dart';
 import '../../models/upgrade_card_definition.dart';
+import '../../models/item_definition.dart';
 
 class LevelUpOption {
   final bool isWeapon;
   final WeaponDefinition? weapon;
   final UpgradeCardDefinition? card;
+  final PassiveItemDefinition? passiveItem;
   final Rarity rarity;
   final bool isNew;
   final String title;
@@ -19,6 +21,7 @@ class LevelUpOption {
     required this.isWeapon,
     this.weapon,
     this.card,
+    this.passiveItem,
     required this.rarity,
     required this.isNew,
     required this.title,

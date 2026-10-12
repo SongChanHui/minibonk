@@ -62,6 +62,7 @@ class MinibonkGame extends FlameGame
 
   // Active level-up choices for overlay
   List<LevelUpOption> currentLevelUpOptions = [];
+  bool isChestRewardModal = false;
 
   // Zone upgrade choices for overlay
   List<UpgradeCardDefinition> currentZoneOptions = [];
@@ -73,6 +74,7 @@ class MinibonkGame extends FlameGame
 
   // HUD Update notifier - signals HUD to rebuild smoothly on every frame (keyboard or touch)
   final ValueNotifier<int> hudNotifier = ValueNotifier<int>(0);
+  final List<String> eventLogs = [];
 
   // Debug & Pause state
   bool isGodMode = false;
@@ -80,6 +82,34 @@ class MinibonkGame extends FlameGame
   double currentFps = 60.0;
   double _fpsTimer = 0.0;
   int _fpsFrames = 0;
+
+  FieldObjectComponent? get nearbyChest {
+    FieldObjectComponent? nearest;
+    var nearestDistance = 52.0;
+    for (final obj in world.children.whereType<FieldObjectComponent>()) {
+      if (obj.isActivated ||
+          (obj.type != FieldObjectType.chestPaid &&
+              obj.type != FieldObjectType.chestGolden)) continue;
+      final distance = (obj.position - player.position).length;
+      if (distance <= nearestDistance) {
+        nearest = obj;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
+  }
+
+  int get nearbyChestCost => EconomyTables.getChestCost(chestOpenCount + 1);
+
+  void logEvent(String message) {
+    final minutes = (elapsedTime ~/ 60).toString().padLeft(2, '0');
+    final seconds = (elapsedTime % 60).floor().toString().padLeft(2, '0');
+    final entry = '[$minutes:$seconds] $message';
+    eventLogs.insert(0, entry);
+    if (eventLogs.length > 6) eventLogs.removeLast();
+    debugPrint(entry);
+    hudNotifier.value++;
+  }
 
   @override
   Color backgroundColor() => const Color(0xFF0F141F);
@@ -115,6 +145,7 @@ class MinibonkGame extends FlameGame
 
     // Generate 128 Field Objects
     _generateFieldObjects();
+    logEvent('게임을 시작했습니다.');
   }
 
   void _generateFieldObjects() {
@@ -322,6 +353,7 @@ class MinibonkGame extends FlameGame
   }
 
   void _spawnMidboss() {
+    logEvent('중간 보스가 출현했습니다!');
     final angle = _rng.nextDouble() * 2 * pi;
     final pos =
         player.position + Vector2(cos(angle) * 350.0, sin(angle) * 350.0);
@@ -336,6 +368,7 @@ class MinibonkGame extends FlameGame
 
   void spawnStageBoss() {
     isBossSpawned = true;
+    logEvent('스테이지 $currentStage 보스가 출현했습니다!');
     final pos = teleporter!.position + Vector2(0, -60);
     world.add(MonsterComponent(
       rank: MonsterRank.stageBoss,
@@ -642,6 +675,7 @@ class MinibonkGame extends FlameGame
     if (monster.rank == MonsterRank.stageBoss) {
       isBossDefeated = true;
       teleporter?.isActivated = true;
+      logEvent('스테이지 $currentStage 보스를 처치했습니다. 포탈에서 E키를 누르세요.');
       world.add(DropItem(type: DropType.expLarge, value: 100, position: pos));
       world.add(DropItem(type: DropType.goldCoin, value: 100, position: pos));
       if (currentStage >= 3) {
@@ -735,6 +769,7 @@ class MinibonkGame extends FlameGame
 
   void _triggerLevelUp() {
     playerLevel++;
+    logEvent('레벨이 $playerLevel로 올랐습니다. 능력을 선택하세요.');
     currentExp -= targetExp;
     targetExp = EconomyTables.getExpToNextLevel(playerLevel);
 
@@ -746,12 +781,31 @@ class MinibonkGame extends FlameGame
   }
 
   void _openFreeChest() {
-    // Free chest awards a random passive item or coins
-    final item = ItemRegistry.allItems[_rng.nextInt(ItemRegistry.allItems.length)];
-    if (item.primaryStat != null) {
-      stats.addItemStat(item.primaryStat!, item.baseStatValue);
-    }
-    gold += 50;
+    _showChestRewards();
+  }
+
+  void _showChestRewards() {
+    final items = List<PassiveItemDefinition>.from(ItemRegistry.allItems)
+      ..shuffle(_rng);
+    isChestRewardModal = true;
+    isZoneUpgradeModal = false;
+    currentLevelUpOptions = items.take(3).map((item) {
+      final rarity = Rarity.rollWithLuck(stats.luck, _rng);
+      final increase = item.baseStatValue * rarity.multiplier;
+      return LevelUpOption(
+        isWeapon: false,
+        passiveItem: item,
+        rarity: rarity,
+        isNew: true,
+        title: item.nameKo,
+        levelText: '${rarity.nameKo} 아이템',
+        description: '${item.description} 능력치 +${increase.toStringAsFixed(1)}',
+        assetPath: item.assetPath,
+      );
+    }).toList();
+    logEvent('상자 보상 3개 중 아이템을 선택하세요.');
+    pauseEngine();
+    overlays.add('upgrade');
   }
 
   void _updateFieldObjects(double dt) {
@@ -778,6 +832,9 @@ class MinibonkGame extends FlameGame
           obj.chargeTimer += dt;
           if (obj.chargeTimer >= obj.chargeDuration) {
             obj.isActivated = true;
+            logEvent(obj.type == FieldObjectType.goldenZone
+                ? '황금 강화 구역을 활성화했습니다.'
+                : '강화 구역을 활성화했습니다.');
             _triggerZoneUpgrade(obj.type == FieldObjectType.goldenZone);
           }
         } else if (!obj.isActivated) {
@@ -874,20 +931,38 @@ class MinibonkGame extends FlameGame
   }
 
   void selectLevelUpOption(LevelUpOption option) {
-    if (option.isWeapon && option.weapon != null) {
+    if (option.passiveItem != null && isChestRewardModal) {
+      final item = option.passiveItem!;
+      final stat = item.primaryStat;
+      if (stat != null) {
+        final before = stats.getRawStatSum(stat);
+        final increase = item.baseStatValue * option.rarity.multiplier;
+        stats.addItemStat(stat, increase);
+        final after = stats.getRawStatSum(stat);
+        logEvent('${item.nameKo} 획득: ${stat.nameKo} ${before.toStringAsFixed(1)} → ${after.toStringAsFixed(1)}');
+      }
+      gold += 50;
+      logEvent('상자 보상 골드 +50');
+    } else if (option.isWeapon && option.weapon != null) {
       if (option.isNew) {
         inventory.addWeapon(option.weapon!, rarity: option.rarity);
       } else {
         option.weapon!.upgrade(option.rarity, _rng);
       }
+      logEvent('${option.title} 무기 강화가 적용되었습니다.');
     } else if (option.card != null) {
+      final stat = option.card!.targetStat;
+      final before = stats.getRawStatSum(stat);
       if (isZoneUpgradeModal) {
         inventory.applyZoneUpgrade(option.card!, option.rarity);
       } else {
         inventory.applyCard(option.card!, option.rarity);
       }
+      final after = stats.getRawStatSum(stat);
+      logEvent('${stat.nameKo} ${before.toStringAsFixed(1)} → ${after.toStringAsFixed(1)}');
     }
 
+    isChestRewardModal = false;
     isZoneUpgradeModal = false;
     overlays.remove('upgrade');
     resumeEngine();
@@ -901,7 +976,7 @@ class MinibonkGame extends FlameGame
   }
 
   void skipUpgradeOptions() {
-    if (skipCount > 0) {
+    if (!isChestRewardModal && skipCount > 0) {
       skipCount--;
       isZoneUpgradeModal = false;
       overlays.remove('upgrade');
@@ -916,6 +991,7 @@ class MinibonkGame extends FlameGame
       return;
     }
     currentStage++;
+    logEvent('$currentStage 스테이지로 이동했습니다.');
     isBossSpawned = false;
     isBossDefeated = false;
 
@@ -1047,6 +1123,10 @@ class MinibonkGame extends FlameGame
       return KeyEventResult.handled;
     }
 
+    if (isOnlyDown && event.logicalKey == LogicalKeyboardKey.keyE) {
+      _interactWithNearbyChest();
+    }
+
     // If modal overlays are active, ignore gameplay directional input
     if (overlays.isActive('pause') ||
         overlays.isActive('upgrade') ||
@@ -1081,5 +1161,33 @@ class MinibonkGame extends FlameGame
     }
 
     return KeyEventResult.handled;
+  }
+
+  void _interactWithNearbyChest() {
+    if (overlays.isActive('pause') ||
+        overlays.isActive('upgrade') ||
+        overlays.isActive('game_over') ||
+        overlays.isActive('victory')) {
+      return;
+    }
+
+    final chest = nearbyChest;
+
+    if (chest == null) return;
+    final isPaid = chest.type == FieldObjectType.chestPaid;
+    final cost = EconomyTables.getChestCost(chestOpenCount + 1);
+    if (isPaid && gold < cost) {
+      logEvent('골드가 부족합니다. 상자 가격 $cost G / 보유 골드 $gold G');
+      return;
+    }
+
+    if (isPaid) {
+      gold -= cost;
+      chestOpenCount++;
+    }
+    chest.isActivated = true;
+    logEvent(isPaid ? '상자를 열었습니다. 비용 $cost G' : '황금 상자를 열었습니다.');
+    _openFreeChest();
+    hudNotifier.value++;
   }
 }
